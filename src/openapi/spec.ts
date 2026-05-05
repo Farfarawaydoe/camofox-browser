@@ -656,63 +656,6 @@ export const openapiSpec: OpenAPIV3_1.Document = {
 				},
 			},
 		},
-		'/act': {
-			post: {
-				summary: 'Execute action (OpenClaw)',
-				description: 'Execute various browser actions like click, type, scroll, etc.',
-				tags: ['OpenClaw'],
-				security: [{ bearerAuth: [] }],
-				requestBody: {
-					required: true,
-					content: {
-						'application/json': {
-							schema: {
-								type: 'object',
-								properties: {
-									targetId: { type: 'string' },
-									userId: { type: 'string' },
-									action: { type: 'string' },
-									ref: { type: 'string' },
-									selector: { type: 'string' },
-									text: { type: 'string' },
-									key: { type: 'string' },
-								},
-							},
-						},
-					},
-				},
-				responses: {
-					'200': {
-						description: 'Action executed',
-						content: {
-							'application/json': {
-								schema: {
-									type: 'object',
-									properties: {
-										ok: { type: 'boolean' },
-										url: { type: 'string' },
-									},
-									required: ['ok', 'url'],
-								},
-							},
-						},
-					},
-					'403': {
-						description: 'Forbidden - Invalid or missing API key',
-						content: {
-							'application/json': {
-								schema: {
-									type: 'object',
-									properties: {
-										error: { type: 'string', enum: ['Forbidden'] },
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
 	},
 	components: {
 		securitySchemes: {

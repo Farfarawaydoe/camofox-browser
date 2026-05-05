@@ -43,7 +43,6 @@ describe('OpenAPI/Docs Endpoints', () => {
       expect(spec.paths['/tabs/open']).toBeDefined();
       expect(spec.paths['/navigate']).toBeDefined();
       expect(spec.paths['/snapshot']).toBeDefined();
-      expect(spec.paths['/act']).toBeDefined();
       expect(spec.paths['/stop']).toBeDefined();
     });
     
@@ -71,7 +70,6 @@ describe('OpenAPI/Docs Endpoints', () => {
       expect(spec.paths['/tabs/{tabId}/navigate'].post.security).toEqual([{ bearerAuth: [] }]);
       expect(spec.paths['/tabs/open'].post.security).toEqual([{ bearerAuth: [] }]);
       expect(spec.paths['/navigate'].post.security).toEqual([{ bearerAuth: [] }]);
-      expect(spec.paths['/act'].post.security).toEqual([{ bearerAuth: [] }]);
       
       // Verify admin key is required for stop route
       expect(spec.paths['/stop'].post.security).toEqual([{ adminKey: [] }]);
