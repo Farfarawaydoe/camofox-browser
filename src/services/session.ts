@@ -23,6 +23,8 @@ const sessions = new Map<string, SessionData>();
 // Avoids storing partially-initialized sessions (e.g., context: null cast) and dedupes concurrent creates.
 const launchingSessions = new Map<string, Promise<SessionData>>();
 
+const lifecycleIdleClosures = new Map<string, { pending: number; promise: Promise<void>; resolve: () => void }>();
+
 // tabId -> sessions map key
 // Persistent profiles are keyed only by userId, while tab endpoints only get tabId.
 const tabSessionIndex = new Map<string, string>();
@@ -63,6 +65,41 @@ export function __getUserConcurrencyStateForTests(userId: string): { active: num
 
 export function __getSessionsMapForTests(): Map<string, SessionData> {
 	return sessions;
+}
+
+function beginLifecycleIdleClosure(userId: unknown): () => void {
+	const key = normalizeUserId(userId);
+	let state = lifecycleIdleClosures.get(key);
+	if (!state) {
+		let resolve!: () => void;
+		const promise = new Promise<void>((r) => {
+			resolve = r;
+		});
+		state = { pending: 0, promise, resolve };
+		lifecycleIdleClosures.set(key, state);
+	}
+	state.pending++;
+
+	let released = false;
+	return () => {
+		if (released) return;
+		released = true;
+		const current = lifecycleIdleClosures.get(key);
+		if (!current) return;
+		current.pending--;
+		if (current.pending <= 0) {
+			lifecycleIdleClosures.delete(key);
+			current.resolve();
+		}
+	};
+}
+
+async function waitForLifecycleIdleClosure(userId: unknown): Promise<void> {
+	const key = normalizeUserId(userId);
+	const pending = lifecycleIdleClosures.get(key);
+	if (pending) {
+		await pending.promise;
+	}
 }
 
 export async function withUserLimit<T>(
@@ -541,6 +578,7 @@ export async function rollbackStagedFirstUse(userId: unknown, generation: string
 
 export async function getSession(userId: unknown, contextOverrides?: ContextOverrides | null): Promise<SessionData> {
 	const key = normalizeUserId(userId);
+	await waitForLifecycleIdleClosure(key);
 	let session = sessions.get(key);
 	const contextOptions = buildBrowserContextOptions(contextOverrides);
 
@@ -596,6 +634,8 @@ export function clearAllState(): void {
 	tabSessionIndex.clear();
 	canonicalProfiles.clear();
 	sessionProfiles.clear();
+	for (const [, state] of lifecycleIdleClosures) state.resolve();
+	lifecycleIdleClosures.clear();
 	for (const [, mutex] of firstCreateMutexes) mutex.resolve(false);
 	firstCreateMutexes.clear();
 	clearAllTabLocks();
@@ -695,13 +735,14 @@ export async function runLifecycleIdleCleanup(
 	// Close the specific contexts from the snapshot
 	const actuallyClosedUsers = new Set<string>();
 	for (const { profileKey, createdAt, lastAccess } of contextsToClose) {
+		const entry = contextSnapshot.get(profileKey);
+		const releaseIdleClosure = entry ? beginLifecycleIdleClosure(entry.userId) : null;
 		try {
 			await contextPool.closeContextIfMatches(profileKey, createdAt, lastAccess);
 			// Verify the context was actually closed (not skipped due to reuse)
 			const stillExists = contextPool.getEntry(profileKey);
 			if (!stillExists) {
 				// Context was actually closed, mark user for session cleanup
-				const entry = contextSnapshot.get(profileKey);
 				if (entry) {
 					actuallyClosedUsers.add(entry.userId);
 				}
@@ -709,6 +750,8 @@ export async function runLifecycleIdleCleanup(
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
 			log('error', 'idle cleanup failed to close context', { profileKey, error: message });
+		} finally {
+			releaseIdleClosure?.();
 		}
 	}
 	
@@ -720,4 +763,3 @@ export async function runLifecycleIdleCleanup(
 
 	return { closedUsers };
 }
-

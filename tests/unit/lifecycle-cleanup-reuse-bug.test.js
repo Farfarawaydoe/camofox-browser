@@ -11,7 +11,10 @@ jest.mock('../../dist/src/utils/config', () => ({
     profilesDir: '/tmp/camofox-test/profiles',
     downloadsDir: '/tmp/camofox-test/downloads',
     port: 3000,
+    headless: true,
+    vncResolution: '1280x720x24',
     proxy: { host: '', port: '', username: '', password: '' },
+    fingerprintDefaults: {},
     sessionTimeoutMs: 600000,
     maxTabsPerSession: 50,
   })),
@@ -56,6 +59,7 @@ jest.mock('../../dist/src/middleware/logging', () => ({
 
 const {
   runLifecycleIdleCleanup,
+  getSession,
   clearAllState,
   __getSessionsMapForTests,
 } = require('../../dist/src/services/session');
@@ -151,5 +155,90 @@ describe('runLifecycleIdleCleanup - reuse race bug', () => {
     // Context should still be in pool (this currently works correctly)
     const poolAfter = contextPool.pool.get(userId);
     expect(poolAfter).toBeDefined();
+  }, 30000);
+
+  it('should not hand back a context while idle cleanup close is in flight', async () => {
+    const userId = 'closing-race-user';
+    const sessions = __getSessionsMapForTests();
+
+    let closeStartedResolve;
+    const closeStarted = new Promise((resolve) => {
+      closeStartedResolve = resolve;
+    });
+    let allowCloseResolve;
+    const allowClose = new Promise((resolve) => {
+      allowCloseResolve = resolve;
+    });
+    let closed = false;
+
+    const closingContext = {
+      pages: () => [],
+      newPage: async () => {
+        if (closed) {
+          throw new Error('browserContext.newPage: Target page, context or browser has been closed');
+        }
+        return { close: async () => {} };
+      },
+      close: async () => {
+        closeStartedResolve();
+        await allowClose;
+        closed = true;
+      },
+      on: () => {},
+    };
+
+    sessions.set(userId, {
+      context: closingContext,
+      tabGroups: new Map(),
+      lastAccess: Date.now() - 10000,
+    });
+
+    const initialLastAccess = Date.now() - 10000;
+    contextPool.pool.set(userId, {
+      userId,
+      profileKey: userId,
+      profileDir: '/tmp/camofox-test/profile',
+      context: closingContext,
+      createdAt: Date.now() - 20000,
+      lastAccess: initialLastAccess,
+      staged: false,
+      launching: undefined,
+    });
+
+    const cleanupStartedMs = Date.now();
+    const sessionSnapshot = new Map();
+    const contextSnapshot = new Map();
+
+    for (const [key, session] of sessions) {
+      sessionSnapshot.set(key, {
+        context: session.context,
+        tabGroups: new Map(session.tabGroups),
+        lastAccess: session.lastAccess,
+      });
+    }
+
+    for (const [key, entry] of contextPool.pool) {
+      contextSnapshot.set(key, { ...entry });
+    }
+
+    const cleanupPromise = runLifecycleIdleCleanup(sessionSnapshot, contextSnapshot, cleanupStartedMs);
+    await closeStarted;
+
+    let getSessionResolved = false;
+    const getSessionPromise = getSession(userId).then((session) => {
+      getSessionResolved = true;
+      return session;
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(getSessionResolved).toBe(false);
+
+    allowCloseResolve();
+    await cleanupPromise;
+
+    const reusedSession = await getSessionPromise;
+    expect(reusedSession.context).not.toBe(closingContext);
+    await expect(reusedSession.context.newPage()).resolves.toBeDefined();
   }, 30000);
 });
