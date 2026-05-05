@@ -189,7 +189,7 @@ GET    /snapshot
 POST   /act
 ```
 
-Full endpoint map (all 48): `references/api-endpoints.md`.
+Full endpoint map (all 54): `references/api-endpoints.md`.
 
 Compatibility warning:
 - The `camofox_youtube_transcript` tool has been removed from `plugin.ts`. Neither server route nor plugin tool expose this capability.
