@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Added
+- **OpenAPI 3.1.0 specification** — machine-readable spec available at `/openapi.json`
+  - covers a representative subset of core and OpenClaw endpoints
+  - includes request/response schemas, authentication requirements, and validation rules
+  - supports automated client generation and contract testing
+- **Interactive API docs** — Swagger UI at `/api/docs` with live request testing
 - **Server-wide fingerprint env controls** — deployments can now configure `CAMOFOX_OS`, `CAMOFOX_ALLOW_WEBGL`, `CAMOFOX_SCREEN_WIDTH`, `CAMOFOX_SCREEN_HEIGHT`, and `CAMOFOX_HUMANIZE` without source edits
   - malformed values fail fast at startup
   - incomplete screen width/height pairs are ignored safely

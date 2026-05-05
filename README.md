@@ -52,6 +52,7 @@
 - **Multi-Session** — concurrent isolated browser contexts per `userId` (defaults: max 50 sessions, max 10 tabs/session)
 - **Persistent Browser Profiles** — Each user gets a dedicated Firefox profile. Cookies, localStorage, IndexedDB, and all browser storage persist across sessions automatically.
 - **Geo Presets** — 8 built-in region presets (locale/timezone/geolocation) + custom presets file
+- **Session-Level Proxy/Geo Overrides** — per-session proxy configuration via named profiles or raw credentials, with hybrid geo modes (`explicit-wins` or `proxy-locked`)
 - **14 Search Macros** — Google, YouTube, Amazon, Reddit (search + subreddit JSON), Wikipedia, Twitter, Yelp, Spotify, Netflix, LinkedIn, Instagram, TikTok, Twitch
 - **Element Refs** — accessibility snapshots annotated with stable `eN` element references for precise interaction
 - **Cookie Persistence** — import Netscape/Playwright-style cookies into a session (bearer auth required only when `CAMOFOX_API_KEY` is set)
