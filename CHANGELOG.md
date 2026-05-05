@@ -2,11 +2,17 @@
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-05-04
+
+### Upgrade Notes
+- **New Wave 2 surfaces** add OpenAPI specification, interactive Swagger UI documentation, server-wide fingerprint environment controls, idle lifecycle policies, session-level proxy/geo overrides, and structured extraction. These are additive capabilities and do not remove any previous route or alias.
+- **Security enhancements** now include default loopback-only binding (`CAMOFOX_HOST=127.0.0.1`), non-loopback API key enforcement, navigation target validation blocking private/loopback hosts unless `CAMOFOX_ALLOW_PRIVATE_NETWORK=true`, and fail-fast proxy deployment validation.
+
 ### Added
 - **OpenAPI 3.1.0 specification** — machine-readable spec available at `/openapi.json`
   - covers a representative subset of core and OpenClaw endpoints
   - includes request/response schemas, authentication requirements, and validation rules
-  - supports automated client generation and contract testing
+  - enables client generation and contract testing for documented endpoints
 - **Interactive API docs** — Swagger UI at `/api/docs` with live request testing
 - **Server-wide fingerprint env controls** — deployments can now configure `CAMOFOX_OS`, `CAMOFOX_ALLOW_WEBGL`, `CAMOFOX_SCREEN_WIDTH`, `CAMOFOX_SCREEN_HEIGHT`, and `CAMOFOX_HUMANIZE` without source edits
   - malformed values fail fast at startup

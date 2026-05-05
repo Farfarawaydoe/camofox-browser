@@ -14,6 +14,7 @@ CamoFox Browser Server is in **Preview** (Phase 1). See [Preview Status](README.
 
 | Version | Commit | npm | GitHub Release | Notes |
 |---------|--------|-----|----------------|-------|
+| v2.4.0 | — | — | — | Wave 2 release candidate. Adds OpenAPI specification, interactive API docs, server-wide fingerprint controls, idle lifecycle policies, session-level proxy/geo overrides, and structured extraction. |
 | v2.3.0 | — | — | — | Wave 1 release candidate. Adds trace artifact management and image-only extraction, with refreshed release metadata. |
 | v2.2.1 | — | — | — | Release-ready. Carries final release framing over v2.2.0 tag. |
 | v2.2.0 | `e2c397d` | — | — | Tagged 2026-04-09. Includes 11 feature commits since v2.1.1. |
@@ -21,7 +22,7 @@ CamoFox Browser Server is in **Preview** (Phase 1). See [Preview Status](README.
 | v2.1.0 | `ea5af9d` | Published 2026-03-08 | Published | Patch: ref system improvements |
 | v2.0.5 | `e696846` | Published 2026-03-08 | Published | Patch: typing truncation fix |
 
-> **Upgrade guidance for v2.3.0+:** Local-state sidecar versioning is fail-closed — incompatible state causes the affected session to error with the specific path to delete. For sidecar metadata, only the indicated file is removed; for profile-level incompatibilities (e.g., engine version mismatch), the entire profile directory may need deletion. Follow the error message guidance. When `CAMOFOX_API_KEY` is set, core and OpenClaw protected endpoints require `Authorization: Bearer` auth; `POST /stop` requires `CAMOFOX_ADMIN_KEY` unconditionally. Current mainline hardening also defaults `CAMOFOX_HOST` to `127.0.0.1`, requires `CAMOFOX_API_KEY` for non-loopback binds, blocks private-network navigation targets on exposed deployments unless `CAMOFOX_ALLOW_PRIVATE_NETWORK=true`, and refuses proxy-enabled exposed binds unless that override is explicit.
+> **Upgrade guidance for v2.4.0+:** Wave 2 introduces OpenAPI documentation at `/openapi.json` and `/api/docs`, server-wide fingerprint environment controls (`CAMOFOX_OS`, `CAMOFOX_ALLOW_WEBGL`, `CAMOFOX_SCREEN_WIDTH`, `CAMOFOX_SCREEN_HEIGHT`, `CAMOFOX_HUMANIZE`), idle lifecycle policies (`CAMOFOX_IDLE_TIMEOUT_MS`, `CAMOFOX_IDLE_EXIT_TIMEOUT_MS`), session-level proxy/geo overrides via `proxyProfile` or raw `proxy` fields, hybrid geo modes (`explicit-wins` vs `proxy-locked`), and structured extraction with schema validation. Security defaults now include loopback-only binding (`CAMOFOX_HOST=127.0.0.1`), non-loopback API key requirement, navigation target validation blocking private/loopback hosts unless `CAMOFOX_ALLOW_PRIVATE_NETWORK=true`, and fail-fast proxy deployment validation. Local-state sidecar versioning remains fail-closed — incompatible state causes the affected session to error with the specific path to delete. When `CAMOFOX_API_KEY` is set, core and OpenClaw protected endpoints require `Authorization: Bearer` auth; `POST /stop` requires `CAMOFOX_ADMIN_KEY` unconditionally.
 
 > **Note:** A 2.1.x maintenance lane would only be opened if a user-facing defect in published v2.1.1 requires hotfix maintenance. Current development continues on the 2.3.0+ line.
 
