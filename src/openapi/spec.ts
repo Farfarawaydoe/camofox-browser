@@ -193,7 +193,7 @@ export const openapiSpec: OpenAPIV3_1.Document = {
 		'/tabs/{tabId}/navigate': {
 			post: {
 				summary: 'Navigate tab to URL',
-				description: 'Navigate the specified tab to a URL, macro, or search query',
+				description: 'Navigate the specified tab to a URL, macro, or search query. Either url or macro is required.',
 				tags: ['Core'],
 				security: [{ bearerAuth: [] }],
 				parameters: [
@@ -217,6 +217,7 @@ export const openapiSpec: OpenAPIV3_1.Document = {
 									macro: { type: 'string' },
 									query: { type: 'string' },
 								},
+								required: ['userId'],
 							},
 						},
 					},
@@ -308,7 +309,7 @@ export const openapiSpec: OpenAPIV3_1.Document = {
 		'/tabs/{tabId}/click': {
 			post: {
 				summary: 'Click element',
-				description: 'Click an element by ref or selector',
+				description: 'Click an element by ref or selector. Either ref or selector is required.',
 				tags: ['Core'],
 				security: [{ bearerAuth: [] }],
 				parameters: [
@@ -330,6 +331,7 @@ export const openapiSpec: OpenAPIV3_1.Document = {
 									ref: { type: 'string' },
 									selector: { type: 'string' },
 								},
+								required: ['userId'],
 							},
 						},
 					},
@@ -490,7 +492,7 @@ export const openapiSpec: OpenAPIV3_1.Document = {
 		'/navigate': {
 			post: {
 				summary: 'Navigate (OpenClaw)',
-				description: 'Navigate to a URL, macro, or search query',
+				description: 'Navigate to a URL, macro, or search query. Either url or macro is required.',
 				tags: ['OpenClaw'],
 				security: [{ bearerAuth: [] }],
 				requestBody: {
@@ -506,6 +508,7 @@ export const openapiSpec: OpenAPIV3_1.Document = {
 									query: { type: 'string' },
 									userId: { type: 'string' },
 								},
+								required: ['userId'],
 							},
 						},
 					},

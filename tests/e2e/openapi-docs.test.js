@@ -290,6 +290,51 @@ describe('OpenAPI/Docs Endpoints', () => {
       expect(spec.components.schemas.TabState).toBeDefined();
       expect(spec.components.schemas.GeolocationConfig).toBeDefined();
     });
+    
+    test('request schemas require userId for authenticated routes', async () => {
+      const response = await fetch(`${serverUrl}/openapi.json`);
+      const spec = await response.json();
+      
+      // POST /tabs/{tabId}/navigate requires userId
+      const navigateReq = spec.paths['/tabs/{tabId}/navigate'].post.requestBody;
+      const navigateSchema = navigateReq.content['application/json'].schema;
+      expect(navigateSchema.required).toContain('userId');
+      
+      // POST /tabs/{tabId}/click requires userId
+      const clickReq = spec.paths['/tabs/{tabId}/click'].post.requestBody;
+      const clickSchema = clickReq.content['application/json'].schema;
+      expect(clickSchema.required).toContain('userId');
+      
+      // POST /navigate (OpenClaw) requires userId
+      const openclawNavReq = spec.paths['/navigate'].post.requestBody;
+      const openclawNavSchema = openclawNavReq.content['application/json'].schema;
+      expect(openclawNavSchema.required).toContain('userId');
+    });
+    
+    test('request schemas document either/or field requirements', async () => {
+      const response = await fetch(`${serverUrl}/openapi.json`);
+      const spec = await response.json();
+      
+      // POST /tabs/{tabId}/navigate requires either url or macro
+      const navigateDesc = spec.paths['/tabs/{tabId}/navigate'].post.description;
+      expect(navigateDesc).toContain('Either url or macro is required');
+      
+      // POST /tabs/{tabId}/click requires either ref or selector
+      const clickDesc = spec.paths['/tabs/{tabId}/click'].post.description;
+      expect(clickDesc).toContain('Either ref or selector is required');
+      
+      // POST /navigate (OpenClaw) requires either url or macro
+      const openclawNavDesc = spec.paths['/navigate'].post.description;
+      expect(openclawNavDesc).toContain('Either url or macro is required');
+    });
+    
+    test('/act path is absent from spec', async () => {
+      const response = await fetch(`${serverUrl}/openapi.json`);
+      const spec = await response.json();
+      
+      // /act should not be documented (polymorphic, out of scope)
+      expect(spec.paths['/act']).toBeUndefined();
+    });
   });
   
   describe('GET /api/docs', () => {
