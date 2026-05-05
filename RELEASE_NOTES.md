@@ -14,7 +14,7 @@ CamoFox Browser Server is in **Preview** (Phase 1). See [Preview Status](README.
 
 | Version | Commit | npm | GitHub Release | Notes |
 |---------|--------|-----|----------------|-------|
-| v2.4.1 | `607423f` | — | Published | Patch release: hardens Docker/GHCR publication against transient GeoLite download failures during `camoufox-js fetch`. |
+| v2.4.1 | `607423f` | Published 2026-05-05 | Published | Patch release: hardens Docker/GHCR publication against transient GeoLite download failures during `camoufox-js fetch`. |
 | v2.4.0 | `700ea55` | — | Published | Wave 2 release candidate. Adds OpenAPI specification, interactive API docs, server-wide fingerprint controls, idle lifecycle policies, session-level proxy/geo overrides, and structured extraction. |
 | v2.3.0 | — | — | — | Wave 1 release candidate. Adds trace artifact management and image-only extraction, with refreshed release metadata. |
 | v2.2.1 | — | — | — | Release-ready. Carries final release framing over v2.2.0 tag. |
