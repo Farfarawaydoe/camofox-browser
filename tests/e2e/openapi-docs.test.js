@@ -61,6 +61,19 @@ describe('OpenAPI/Docs Endpoints', () => {
       expect(spec.components.securitySchemes.adminKey.in).toBe('header');
       expect(spec.components.securitySchemes.adminKey.name).toBe('X-Admin-Key');
     });
+
+    test('spec advertises the default local server URL', async () => {
+      const response = await fetch(`${serverUrl}/openapi.json`);
+      const spec = await response.json();
+
+      expect(spec.servers).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            url: 'http://localhost:9377',
+          }),
+        ]),
+      );
+    });
     
     test('protected routes have security requirements', async () => {
       const response = await fetch(`${serverUrl}/openapi.json`);

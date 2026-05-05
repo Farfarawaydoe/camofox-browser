@@ -49,8 +49,8 @@ export const openapiSpec: OpenAPIV3_1.Document = {
 	},
 	servers: [
 		{
-			url: 'http://localhost:3000',
-			description: 'Local development server',
+			url: 'http://localhost:9377',
+			description: 'Local default server',
 		},
 	],
 	paths: {
