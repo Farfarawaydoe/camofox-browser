@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-05-05
+
+### Fixed
+- **Docker release builds** — tolerate transient `camoufox-js fetch` / GeoLite MMDB download failures during image creation
+  - keeps image publication from failing solely because the optional GeoLite database is temporarily unavailable
+  - aligns Docker build behavior with the existing best-effort `postinstall` fetch contract
+
 ## [2.4.0] - 2026-05-05
 
 ### Upgrade Notes
