@@ -1,6 +1,6 @@
-# Camofox API Endpoints (48 Total)
+# Camofox API Endpoints (48 Core + OpenClaw Routes)
 
-Complete route reference from:
+Complete core + OpenClaw route reference from:
 - `src/routes/core.ts` (41 endpoints)
 - `src/routes/openclaw.ts` (7 endpoints)
 
@@ -9,7 +9,7 @@ Related:
 - `./cli-commands.md`
 - `./openclaw-tools.md`
 
-Source of truth for route behavior: the live handlers in `src/routes/core.ts` and `src/routes/openclaw.ts`
+Source of truth for the 48-route catalog below: the live handlers in `src/routes/core.ts` and `src/routes/openclaw.ts`
 
 ## OpenAPI Documentation
 
@@ -24,7 +24,7 @@ The OpenAPI spec provides:
 - Representative coverage of core and OpenClaw endpoints
 - Live request testing via Swagger UI
 
-Use `/api/docs` when you need interactive API exploration or detailed request/response examples. The spec below provides the complete endpoint catalog.
+The docs routes live in `src/routes/docs.ts` and sit outside the 48-route catalog below. Use `/api/docs` when you need interactive API exploration or detailed request/response examples; use the catalog below when you need the full core + OpenClaw route inventory.
 
 ## Table of Contents
 
