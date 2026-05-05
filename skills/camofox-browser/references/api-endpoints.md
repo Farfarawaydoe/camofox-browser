@@ -11,6 +11,21 @@ Related:
 
 Source of truth for development: `AGENTS.md`
 
+## OpenAPI Documentation
+
+The API is documented using OpenAPI 3.1.0 with interactive documentation:
+
+- **Interactive API Docs**: `GET /api/docs` — Swagger UI for exploring and testing API endpoints
+- **OpenAPI Spec**: `GET /openapi.json` — Machine-readable OpenAPI 3.1.0 specification
+
+The OpenAPI spec provides:
+- Request/response schemas with validation rules
+- Authentication requirements (bearer auth, admin key)
+- Representative coverage of core and OpenClaw endpoints
+- Live request testing via Swagger UI
+
+Use `/api/docs` when you need interactive API exploration or detailed request/response examples. The spec below provides the complete endpoint catalog.
+
 ## Table of Contents
 
 1. Core Routes (`core.ts`) — 41

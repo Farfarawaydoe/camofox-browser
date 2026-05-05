@@ -145,6 +145,10 @@ Global flag reminders:
 
 ## 4) Essential API Endpoints (quick reference)
 
+API Documentation:
+- Interactive docs: `GET /api/docs` (Swagger UI)
+- OpenAPI 3.1.0 spec: `GET /openapi.json`
+
 Core tab flow:
 ```bash
 POST   /tabs

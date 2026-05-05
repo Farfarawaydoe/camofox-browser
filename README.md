@@ -467,6 +467,15 @@ Base URL: `http://localhost:9377`
 
 > **Security defaults:** `CAMOFOX_HOST` now defaults to `127.0.0.1`. If you bind beyond loopback (for example `0.0.0.0` in Docker or PaaS), `CAMOFOX_API_KEY` becomes required at startup. On non-loopback binds, navigation targets on loopback/private/link-local/metadata hosts are blocked by default unless you explicitly set `CAMOFOX_ALLOW_PRIVATE_NETWORK=true`. If you also configure `PROXY_HOST`/`PROXY_PORT`, exposed deployments must opt into `CAMOFOX_ALLOW_PRIVATE_NETWORK=true` until proxy-side private-target validation exists.
 
+### API Documentation
+
+The Camofox Browser API is fully documented using OpenAPI 3.1.0:
+
+- **Interactive API Explorer**: [http://localhost:9377/api/docs](http://localhost:9377/api/docs) — Swagger UI with live request testing
+- **OpenAPI Specification**: [http://localhost:9377/openapi.json](http://localhost:9377/openapi.json) — Machine-readable OpenAPI 3.1.0 spec
+
+The OpenAPI spec covers a representative subset of core and OpenClaw endpoints, including request schemas, response shapes, authentication requirements, and validation rules.
+
 ### Core Endpoints
 
 Note: For any endpoint that targets an existing tab (`/tabs/:tabId/...`), the server resolves `tabId` **within a `userId` scope**. If you omit `userId`, you will typically get `404 Tab not found`.
