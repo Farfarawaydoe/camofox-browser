@@ -201,6 +201,85 @@ describe('OpenAPI/Docs Endpoints', () => {
       expect(schema.properties.status).toBeUndefined();
     });
     
+    test('response shapes match actual handlers for /tabs/{tabId}/click', async () => {
+      const response = await fetch(`${serverUrl}/openapi.json`);
+      const spec = await response.json();
+      
+      const clickResponse = spec.paths['/tabs/{tabId}/click'].post.responses['200'];
+      const schema = clickResponse.content['application/json'].schema;
+      
+      // Click returns { ok, url, downloads? }
+      expect(schema.required).toEqual(['ok', 'url']);
+      expect(schema.properties.ok).toBeDefined();
+      expect(schema.properties.url).toBeDefined();
+      expect(schema.properties.downloads).toBeDefined();
+      expect(schema.properties.downloads.type).toBe('array');
+      
+      // Verify downloads array item structure
+      const downloadItem = schema.properties.downloads.items;
+      expect(downloadItem.required).toEqual(['id', 'filename', 'status', 'size']);
+      expect(downloadItem.properties.id).toBeDefined();
+      expect(downloadItem.properties.filename).toBeDefined();
+      expect(downloadItem.properties.status).toBeDefined();
+      expect(downloadItem.properties.size).toBeDefined();
+      
+      // Verify security is required
+      expect(spec.paths['/tabs/{tabId}/click'].post.security).toEqual([{ bearerAuth: [] }]);
+    });
+    
+    test('response shapes match actual handlers for core /tabs/{tabId}/snapshot', async () => {
+      const response = await fetch(`${serverUrl}/openapi.json`);
+      const spec = await response.json();
+      
+      const snapshotResponse = spec.paths['/tabs/{tabId}/snapshot'].get.responses['200'];
+      const schema = snapshotResponse.content['application/json'].schema;
+      
+      // Core snapshot returns buildSnapshotPayload: { url, snapshot, refsCount, offset, truncated, totalChars, hasMore, nextOffset }
+      expect(schema.required).toEqual(['url', 'snapshot', 'refsCount', 'offset', 'truncated', 'totalChars', 'hasMore', 'nextOffset']);
+      expect(schema.properties.url).toBeDefined();
+      expect(schema.properties.snapshot).toBeDefined();
+      expect(schema.properties.refsCount).toBeDefined();
+      expect(schema.properties.offset).toBeDefined();
+      expect(schema.properties.truncated).toBeDefined();
+      expect(schema.properties.totalChars).toBeDefined();
+      expect(schema.properties.hasMore).toBeDefined();
+      expect(schema.properties.nextOffset).toBeDefined();
+      
+      // Verify no invented fields like ok or title
+      expect(Object.keys(schema.properties)).toHaveLength(8);
+      expect(schema.properties.ok).toBeUndefined();
+      expect(schema.properties.title).toBeUndefined();
+    });
+    
+    test('response shapes match actual handlers for OpenClaw /snapshot', async () => {
+      const response = await fetch(`${serverUrl}/openapi.json`);
+      const spec = await response.json();
+      
+      const snapshotResponse = spec.paths['/snapshot'].get.responses['200'];
+      const schema = snapshotResponse.content['application/json'].schema;
+      
+      // OpenClaw snapshot returns { ok, format, targetId, ...buildSnapshotPayload(...) }
+      expect(schema.required).toEqual(['ok', 'format', 'targetId', 'url', 'snapshot', 'refsCount', 'offset', 'truncated', 'totalChars', 'hasMore', 'nextOffset']);
+      expect(schema.properties.ok).toBeDefined();
+      expect(schema.properties.format).toBeDefined();
+      expect(schema.properties.format.enum).toEqual(['aria']);
+      expect(schema.properties.targetId).toBeDefined();
+      
+      // Plus all buildSnapshotPayload fields
+      expect(schema.properties.url).toBeDefined();
+      expect(schema.properties.snapshot).toBeDefined();
+      expect(schema.properties.refsCount).toBeDefined();
+      expect(schema.properties.offset).toBeDefined();
+      expect(schema.properties.truncated).toBeDefined();
+      expect(schema.properties.totalChars).toBeDefined();
+      expect(schema.properties.hasMore).toBeDefined();
+      expect(schema.properties.nextOffset).toBeDefined();
+      
+      // Verify no invented title field
+      expect(Object.keys(schema.properties)).toHaveLength(11);
+      expect(schema.properties.title).toBeUndefined();
+    });
+    
     test('spec includes components and schemas', async () => {
       const response = await fetch(`${serverUrl}/openapi.json`);
       const spec = await response.json();

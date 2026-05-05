@@ -268,6 +268,7 @@ export const openapiSpec: OpenAPIV3_1.Document = {
 					{
 						name: 'userId',
 						in: 'query',
+						required: true,
 						schema: { type: 'string' },
 					},
 					{
@@ -284,11 +285,19 @@ export const openapiSpec: OpenAPIV3_1.Document = {
 								schema: {
 									type: 'object',
 									properties: {
-										ok: { type: 'boolean' },
-										snapshot: { type: 'string' },
 										url: { type: 'string' },
-										title: { type: 'string' },
+										snapshot: { type: 'string' },
+										refsCount: { type: 'number' },
+										offset: { type: 'number' },
+										truncated: { type: 'boolean' },
+										totalChars: { type: 'number' },
+										hasMore: { type: 'boolean' },
+										nextOffset: {
+											type: 'number',
+											nullable: true,
+										},
 									},
+									required: ['url', 'snapshot', 'refsCount', 'offset', 'truncated', 'totalChars', 'hasMore', 'nextOffset'],
 								},
 							},
 						},
@@ -301,6 +310,7 @@ export const openapiSpec: OpenAPIV3_1.Document = {
 				summary: 'Click element',
 				description: 'Click an element by ref or selector',
 				tags: ['Core'],
+				security: [{ bearerAuth: [] }],
 				parameters: [
 					{
 						name: 'tabId',
@@ -333,6 +343,34 @@ export const openapiSpec: OpenAPIV3_1.Document = {
 									type: 'object',
 									properties: {
 										ok: { type: 'boolean' },
+										url: { type: 'string' },
+										downloads: {
+											type: 'array',
+											items: {
+												type: 'object',
+												properties: {
+													id: { type: 'string' },
+													filename: { type: 'string' },
+													status: { type: 'string' },
+													size: { type: 'number' },
+												},
+												required: ['id', 'filename', 'status', 'size'],
+											},
+										},
+									},
+									required: ['ok', 'url'],
+								},
+							},
+						},
+					},
+					'403': {
+						description: 'Forbidden - Invalid or missing API key',
+						content: {
+							'application/json': {
+								schema: {
+									type: 'object',
+									properties: {
+										error: { type: 'string', enum: ['Forbidden'] },
 									},
 								},
 							},
@@ -567,11 +605,13 @@ export const openapiSpec: OpenAPIV3_1.Document = {
 					{
 						name: 'targetId',
 						in: 'query',
+						required: true,
 						schema: { type: 'string' },
 					},
 					{
 						name: 'userId',
 						in: 'query',
+						required: true,
 						schema: { type: 'string' },
 					},
 					{
@@ -594,10 +634,21 @@ export const openapiSpec: OpenAPIV3_1.Document = {
 									type: 'object',
 									properties: {
 										ok: { type: 'boolean' },
-										snapshot: { type: 'string' },
+										format: { type: 'string', enum: ['aria'] },
+										targetId: { type: 'string' },
 										url: { type: 'string' },
-										title: { type: 'string' },
+										snapshot: { type: 'string' },
+										refsCount: { type: 'number' },
+										offset: { type: 'number' },
+										truncated: { type: 'boolean' },
+										totalChars: { type: 'number' },
+										hasMore: { type: 'boolean' },
+										nextOffset: {
+											type: 'number',
+											nullable: true,
+										},
 									},
+									required: ['ok', 'format', 'targetId', 'url', 'snapshot', 'refsCount', 'offset', 'truncated', 'totalChars', 'hasMore', 'nextOffset'],
 								},
 							},
 						},
@@ -639,7 +690,9 @@ export const openapiSpec: OpenAPIV3_1.Document = {
 									type: 'object',
 									properties: {
 										ok: { type: 'boolean' },
+										url: { type: 'string' },
 									},
+									required: ['ok', 'url'],
 								},
 							},
 						},
