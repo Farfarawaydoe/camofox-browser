@@ -125,6 +125,27 @@ describe('Session invariants', () => {
     expect(reused.data.tabId).toBeDefined();
   });
 
+  test('toggle-display does not prelaunch a stale default context before first tab create', async () => {
+    const userId = trackUser('toggle-first');
+
+    const toggled = await postJson(serverUrl, `/sessions/${encodeURIComponent(userId)}/toggle-display`, {
+      headless: true,
+    });
+    expect(toggled.res.status).toBe(200);
+
+    const created = await postJson(serverUrl, '/tabs', {
+      userId,
+      sessionKey: 'alpha',
+      url: `${testSiteUrl}/pageA`,
+      preset: 'us-east',
+    });
+    expect(created.res.status).toBe(200);
+    expect(created.data.tabId).toBeDefined();
+
+    const health = await waitForPoolSize(serverUrl, 1);
+    expect(health.poolSize).toBe(1);
+  });
+
   test('compares canonical equality using resolved overrides after preset expansion', async () => {
     const userId = trackUser('equivalent');
 
@@ -648,14 +669,13 @@ describe('Session invariants', () => {
     expect(dl.suggestedFilename).toBe('test-download.bin');
   }, 30000);
 
-  test('same user can establish different session profiles on different sessionKeys', async () => {
+  test('same user can open tabs on different sessionKeys under one canonical profile', async () => {
     const userId = trackUser('parallel-profiles');
 
     const first = await postJson(serverUrl, '/tabs', {
       userId,
       sessionKey: 'alpha',
       url: `${testSiteUrl}/pageA`,
-      proxy: { host: 'proxy.alpha.test', port: '8001' },
     });
     expect(first.res.status).toBe(200);
 
@@ -663,7 +683,6 @@ describe('Session invariants', () => {
       userId,
       sessionKey: 'beta',
       url: `${testSiteUrl}/pageB`,
-      proxy: { host: 'proxy.beta.test', port: '8002' },
     });
     expect(second.res.status).toBe(200);
   });
@@ -675,14 +694,14 @@ describe('Session invariants', () => {
       userId,
       sessionKey: 'stable',
       url: `${testSiteUrl}/pageA`,
-      proxy: { host: 'proxy.alpha.test', port: '8001' },
+      geoMode: 'explicit-wins',
     });
 
     const conflict = await postJson(serverUrl, '/tabs', {
       userId,
       sessionKey: 'stable',
       url: `${testSiteUrl}/pageB`,
-      proxy: { host: 'proxy.beta.test', port: '8002' },
+      geoMode: 'proxy-locked',
     });
 
     expect(conflict.res.status).toBe(409);

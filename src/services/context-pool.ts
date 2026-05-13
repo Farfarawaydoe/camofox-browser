@@ -71,9 +71,35 @@ function getInstalledCamoufoxVersion(): string {
 	}
 }
 
-function profileDirForUserId(userId: string): string {
+function decodeDefaultProfileUserId(profileKey: string): string | null {
+	if (!profileKey.startsWith('u:') || profileKey.indexOf(':', 2) !== -1) return null;
+	try {
+		const encoded = profileKey.slice(2);
+		const bytes = Buffer.from(encoded, 'base64url');
+		if (bytes.length % 2 !== 0) return null;
+		const decoded = bytes.toString('utf16le');
+		if (/^(?:u|s|p|o):/.test(decoded)) return null;
+		for (let i = 0; i < decoded.length; i += 1) {
+			const code = decoded.charCodeAt(i);
+			if (code >= 0xd800 && code <= 0xdbff) {
+				if (i + 1 >= decoded.length) return null;
+				const next = decoded.charCodeAt(i + 1);
+				if (next < 0xdc00 || next > 0xdfff) return null;
+				i += 1;
+			} else if (code >= 0xdc00 && code <= 0xdfff) {
+				return null;
+			}
+		}
+		return `u:${Buffer.from(decoded, 'utf16le').toString('base64url')}` === profileKey ? decoded : null;
+	} catch {
+		return null;
+	}
+}
+
+function profileDirForProfileKey(profileKey: string): string {
 	// Avoid path traversal from untrusted route params.
-	const safe = encodeURIComponent(String(userId));
+	const defaultUserId = decodeDefaultProfileUserId(String(profileKey));
+	const safe = encodeURIComponent(defaultUserId ?? String(profileKey));
 	return path.join(CONFIG.profilesDir, safe);
 }
 
@@ -247,6 +273,7 @@ export class ContextPool {
 
 	private async launchPersistentContext(
 		userId: string,
+		profileKey: string,
 		contextOptions?: BrowserContextOptions,
 		resolvedProxy?: ResolvedProxyConfig | null,
 	): Promise<{ context: BrowserContext; virtualDisplay?: any }> {
@@ -254,7 +281,7 @@ export class ContextPool {
 		const proxy = buildProxyConfig(resolvedProxy);
 		const headless = this.headlessOverrides.get(userId) ?? CONFIG.headless;
 
-		const profileDir = profileDirForUserId(userId);
+		const profileDir = profileDirForProfileKey(profileKey);
 		fs.mkdirSync(profileDir, { recursive: true });
 		const compatPath = path.join(profileDir, 'compatibility.json');
 
@@ -428,8 +455,15 @@ export class ContextPool {
 		}
 	}
 
-	async restartContext(userId: string, headless?: boolean | 'virtual'): Promise<PoolEntry> {
+	async restartContext(
+		userId: string,
+		headless?: boolean | 'virtual',
+		profileKey?: string,
+		options?: BrowserContextOptions,
+		resolvedProxy?: ResolvedProxyConfig | null,
+	): Promise<PoolEntry> {
 		const normalized = String(userId);
+		const targetProfileKey = profileKey ?? normalized;
 		if (headless !== undefined) {
 			this.headlessOverrides.set(normalized, headless);
 		}
@@ -445,8 +479,8 @@ export class ContextPool {
 			await this.closeContext(profileKey);
 		}
 
-		// Return a new entry with default key (for backward compatibility)
-		return this.ensureContext(normalized, normalized);
+		// Return a new entry with the caller's runtime profile key.
+		return this.ensureContext(targetProfileKey, normalized, options, resolvedProxy);
 	}
 
 	private async evictIfNeeded(): Promise<void> {
@@ -460,7 +494,7 @@ export class ContextPool {
 		if (!lru) return;
 
 		log('info', 'evicting persistent context (LRU)', { userId: lru.userId, profileDir: lru.profileDir });
-		this.notifyEviction(lru.userId);
+		this.notifyEviction(lru.profileKey);
 		await this.closeContext(lru.profileKey);
 	}
 
@@ -511,7 +545,7 @@ export class ContextPool {
 			return entry;
 		}
 
-		const profileDir = profileDirForUserId(normalized);
+		const profileDir = profileDirForProfileKey(profileKey);
 		const newEntry: PoolEntry = {
 			context: null as unknown as BrowserContext,
 			userId: normalized,
@@ -525,7 +559,7 @@ export class ContextPool {
 			seedOptions: seed,
 		};
 
-		newEntry.launching = this.launchPersistentContext(normalized, options, resolvedProxy)
+		newEntry.launching = this.launchPersistentContext(normalized, profileKey, options, resolvedProxy)
 			.then(({ context, virtualDisplay }) => {
 				newEntry.context = context;
 				newEntry.virtualDisplay = virtualDisplay;
@@ -584,6 +618,10 @@ export class ContextPool {
 		// If lastAccess was provided and has changed, the context was reused - don't close
 		if (expectedLastAccess !== undefined && entry.lastAccess !== expectedLastAccess) return;
 		await this.closeContext(normalized);
+	}
+
+	setHeadlessOverride(userId: string, headless: boolean | 'virtual'): void {
+		this.headlessOverrides.set(String(userId), headless);
 	}
 
 	async closeStagedContext(profileKey: string, generation?: string): Promise<void> {

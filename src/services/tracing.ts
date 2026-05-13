@@ -28,8 +28,39 @@ function getTracesDir(): string {
 	return resolve(configuredTracesDir);
 }
 
+function hasMalformedUtf16(value: string): boolean {
+	for (let i = 0; i < value.length; i += 1) {
+		const code = value.charCodeAt(i);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			if (i + 1 >= value.length) return true;
+			const next = value.charCodeAt(i + 1);
+			if (next < 0xdc00 || next > 0xdfff) return true;
+			i += 1;
+		} else if (code >= 0xdc00 && code <= 0xdfff) {
+			return true;
+		}
+	}
+	return false;
+}
+
 function getTraceArtifactOwnerToken(userId: string): string {
-	return Buffer.from(userId, 'utf8').toString('base64url');
+	return Buffer.from(userId, 'utf16le').toString('base64url');
+}
+
+function getLegacyTraceArtifactOwnerToken(userId: string): string | null {
+	if (hasMalformedUtf16(userId)) return null;
+	const legacyBytes = Buffer.from(userId, 'utf8');
+	// Even-length legacy UTF-8 bytes are also a valid raw UTF-16LE owner-token
+	// payload for some other JS string, so they cannot be authorized safely.
+	if (legacyBytes.length % 2 === 0) return null;
+	return legacyBytes.toString('base64url');
+}
+
+function getTraceArtifactOwnerTokens(userId: string): Set<string> {
+	const tokens = new Set([getTraceArtifactOwnerToken(userId)]);
+	const legacyToken = getLegacyTraceArtifactOwnerToken(userId);
+	if (legacyToken) tokens.add(legacyToken);
+	return tokens;
 }
 
 function buildTraceArtifactFilename(userId: string): string {
@@ -72,10 +103,13 @@ function resolveManagedTraceOutputPath(userId: string, outputPath?: string): str
 
 export function listTraceArtifacts(userId: string): Array<{ filename: string; size: number; createdAt: number }> {
 	const tracesDir = getTracesDir();
-	const ownerToken = getTraceArtifactOwnerToken(userId);
+	const ownerTokens = getTraceArtifactOwnerTokens(userId);
 	mkdirSync(tracesDir, { recursive: true });
 	return readdirSync(tracesDir, { withFileTypes: true })
-		.filter((entry) => entry.isFile() && getTraceArtifactFilenameOwnerToken(entry.name) === ownerToken)
+		.filter((entry) => {
+			const token = getTraceArtifactFilenameOwnerToken(entry.name);
+			return entry.isFile() && token !== null && ownerTokens.has(token);
+		})
 		.flatMap((entry) => {
 			const path = join(tracesDir, entry.name);
 			let stat;
@@ -96,8 +130,9 @@ export function resolveTraceArtifactPath(userId: string, filename: string): stri
 	if (!TRACE_ARTIFACT_FILENAME_PATTERN.test(filename)) {
 		throw new Error('Invalid trace filename');
 	}
-	const ownerToken = getTraceArtifactOwnerToken(userId);
-	if (getTraceArtifactFilenameOwnerToken(filename) !== ownerToken) {
+	const ownerTokens = getTraceArtifactOwnerTokens(userId);
+	const filenameOwnerToken = getTraceArtifactFilenameOwnerToken(filename);
+	if (filenameOwnerToken === null || !ownerTokens.has(filenameOwnerToken)) {
 		throw new Error('Trace artifact does not belong to this user');
 	}
 	return resolveAndValidateOutputPath(join(getTracesDir(), filename));

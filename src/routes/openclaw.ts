@@ -20,16 +20,25 @@ import { lifecycleController } from '../services/lifecycle-controller';
 import { registerDownloadListener } from '../services/download';
 import {
 	MAX_TABS_PER_SESSION,
+	acquireSessionProfileCreateMutex,
+	claimDefaultSessionProfileRuntime,
+	clearSessionProfile,
+	clearDefaultSessionProfileClaim,
 	closeAllSessions,
 	clearAllState,
 	countTotalTabsForSessions,
+	establishSessionProfile,
 	findTabById,
 	getCanonicalProfile,
+	getEstablishedSessionProfile,
 	getSession,
 	getSessionMapKey,
 	getTabGroup,
+	hasDefaultSessionProfileRuntime,
 	indexTab,
+	rollbackSessionProfileRuntime,
 	unindexTab,
+	waitForSessionProfileCreate,
 	withUserLimit,
 } from '../services/session';
 import {
@@ -47,7 +56,7 @@ import {
 	withTabLock,
 	withTimeout,
 } from '../services/tab';
-import type { StructuredExtractRootSchema } from '../types';
+import type { ResolvedSessionProfile, StructuredExtractRootSchema } from '../types';
 
 const CONFIG = loadConfig();
 const PKG_VERSION = (() => {
@@ -111,6 +120,12 @@ router.get('/', async (_req: Request, res: Response) => {
 
 // POST /tabs/open - Open tab (alias for POST /tabs, OpenClaw format)
 router.post('/tabs/open', async (req: Request<unknown, unknown, { url?: string; userId?: unknown; listItemId?: string; proxyProfile?: string; proxy?: unknown; geoMode?: string }>, res: Response) => {
+	let profileUserId: unknown;
+	let profileSessionKey: string | undefined;
+	let createdSessionProfile = false;
+	let createdSessionProfileSignature: string | undefined;
+	let createdDefaultSessionProfileClaim = false;
+	let releaseSessionProfileCreate: ((committed: boolean) => void) | undefined;
 	try {
 		if (CONFIG.apiKey && !isAuthorizedWithApiKey(req as unknown as Request, CONFIG.apiKey)) {
 			return res.status(403).json({ error: 'Forbidden' });
@@ -123,11 +138,13 @@ router.post('/tabs/open', async (req: Request<unknown, unknown, { url?: string; 
 		if (!url) {
 			return res.status(400).json({ error: 'url is required' });
 		}
+		profileUserId = userId;
+		profileSessionKey = listItemId;
 
 		// Establish/check session profile if proxy/geo fields provided
+		let resolvedSessionProfile: ResolvedSessionProfile | undefined;
 		if (proxyProfile || proxy || geoMode) {
 			const { resolveSessionProfileInput, getConfiguredServerProxy, loadProxyProfiles } = await import('../utils/proxy-profiles');
-			const { establishSessionProfile } = await import('../services/session');
 			const profileInput = {
 				proxy: proxy as any,
 				proxyProfile,
@@ -139,13 +156,9 @@ router.post('/tabs/open', async (req: Request<unknown, unknown, { url?: string; 
 			};
 			try {
 				const resolvedProfileBase = resolveSessionProfileInput(profileInput, deps);
-				const resolvedProfile = { ...resolvedProfileBase, sessionKey: listItemId };
-				establishSessionProfile(userId, listItemId, resolvedProfile);
+				resolvedSessionProfile = { ...resolvedProfileBase, sessionKey: listItemId };
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
-				if (message === 'Session profile conflict') {
-					return res.status(409).json({ error: 'Session profile conflict' });
-				}
 				return res.status(400).json({ error: message });
 			}
 		}
@@ -164,11 +177,65 @@ router.post('/tabs/open', async (req: Request<unknown, unknown, { url?: string; 
 			});
 		}
 
-		const sessionMapKey = getSessionMapKey(userId, canonical.resolvedOverrides);
-		const session = await getSession(userId, canonical.resolvedOverrides);
+		if (resolvedSessionProfile) {
+			while (true) {
+				await waitForSessionProfileCreate(userId, listItemId);
+				const existingProfile = getEstablishedSessionProfile(userId, listItemId);
+				if (existingProfile) {
+					if (existingProfile.signature !== resolvedSessionProfile.signature) {
+						return res.status(409).json({ error: 'Session profile conflict' });
+					}
+					break;
+				}
+				if (hasDefaultSessionProfileRuntime(userId, listItemId)) {
+					return res.status(409).json({ error: 'Session profile conflict' });
+				}
+
+				const mutex = acquireSessionProfileCreateMutex(userId, listItemId, resolvedSessionProfile.signature);
+				if (mutex.acquired) {
+					releaseSessionProfileCreate = mutex.release;
+					try {
+						establishSessionProfile(userId, listItemId, resolvedSessionProfile);
+						createdSessionProfile = true;
+						createdSessionProfileSignature = resolvedSessionProfile.signature;
+					} catch (err) {
+						releaseSessionProfileCreate(false);
+						releaseSessionProfileCreate = undefined;
+						const message = err instanceof Error ? err.message : String(err);
+						if (message === 'Session profile conflict') {
+							return res.status(409).json({ error: 'Session profile conflict' });
+						}
+						return res.status(400).json({ error: message });
+					}
+					break;
+				}
+
+				await mutex.wait;
+			}
+		} else {
+			await waitForSessionProfileCreate(userId, listItemId);
+			if (!getEstablishedSessionProfile(userId, listItemId)) {
+				createdDefaultSessionProfileClaim = claimDefaultSessionProfileRuntime(userId, listItemId);
+			}
+		}
+
+		const establishedProfile = getEstablishedSessionProfile(userId, listItemId);
+		const sessionMapKey = establishedProfile
+			? getSessionMapKey(userId, listItemId, establishedProfile.signature)
+			: getSessionMapKey(userId, canonical.resolvedOverrides);
+		const session = await getSession(userId, canonical.resolvedOverrides, listItemId);
 
 		const totalTabs = countTotalTabsForSessions([[sessionMapKey, session]]);
 		if (totalTabs >= MAX_TABS_PER_SESSION) {
+			if (createdSessionProfile && createdSessionProfileSignature) {
+				await rollbackSessionProfileRuntime(userId, listItemId, createdSessionProfileSignature);
+			}
+			if (createdDefaultSessionProfileClaim) {
+				clearDefaultSessionProfileClaim(userId, listItemId);
+				createdDefaultSessionProfileClaim = false;
+			}
+			releaseSessionProfileCreate?.(false);
+			releaseSessionProfileCreate = undefined;
 			return res.status(429).json({ error: 'Maximum tabs per session reached' });
 		}
 
@@ -189,6 +256,9 @@ router.post('/tabs/open', async (req: Request<unknown, unknown, { url?: string; 
 
 		log('info', 'openclaw tab opened', { reqId: req.reqId, tabId, url: page.url() });
 		lifecycleController.recordInteractiveActivity();
+		releaseSessionProfileCreate?.(true);
+		releaseSessionProfileCreate = undefined;
+		createdSessionProfile = false;
 		return res.json({
 			ok: true,
 			targetId: tabId,
@@ -197,6 +267,18 @@ router.post('/tabs/open', async (req: Request<unknown, unknown, { url?: string; 
 			title: await page.title().catch(() => ''),
 		});
 	} catch (err) {
+		if (createdSessionProfile && profileUserId && profileSessionKey) {
+			if (createdSessionProfileSignature) {
+				await rollbackSessionProfileRuntime(profileUserId, profileSessionKey, createdSessionProfileSignature);
+			} else {
+				clearSessionProfile(profileUserId, profileSessionKey);
+			}
+		}
+		if (createdDefaultSessionProfileClaim && profileUserId && profileSessionKey) {
+			clearDefaultSessionProfileClaim(profileUserId, profileSessionKey);
+		}
+		releaseSessionProfileCreate?.(false);
+		releaseSessionProfileCreate = undefined;
 		const message = err instanceof Error ? err.message : String(err);
 		log('error', 'openclaw tab open failed', { reqId: req.reqId, error: message });
 		return res.status(getRouteErrorStatus(err)).json({ error: safeError(err) });

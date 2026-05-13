@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [2.4.3] - 2026-05-13
+
+### Fixed
+- Session-level `proxyProfile` and raw `proxy` settings now reach the browser context launch path, so proxy egress intent is applied instead of only being validated/stored.
+- Session-profile contexts now use delimiter-safe runtime keys derived from `userId + sessionKey + profile signature` and profile-keyed persistent directories, preventing sibling proxy profiles for the same user from sharing one browser context or `userDataDir`.
+- Session/user ownership checks no longer use raw `userId::sessionKey` prefix matching, so `userId` or `sessionKey` values containing `::` cannot collide with another user's sessions, tab index, or cleanup path.
+- First-create rollback now closes staged profile-keyed contexts by user/generation and always releases the canonical mutex, so a failed proxy-profile first tab cannot wedge future retries.
+- Rejected core/OpenClaw requests no longer persist provisional session proxy profiles or leave allocated profile-key sessions/contexts behind after runtime allocation failures.
+- Concurrent core/OpenClaw requests for the same new session profile now wait for the profile-create attempt to commit or rollback, so a failed creator cannot delete a sibling request that already returned success.
+- Idle lifecycle cleanup now closes and removes only the exact zero-tab profile-key session, preserving active sibling profile sessions for the same user.
+- Display-mode toggles now prewarm the existing single profile-key context for VNC with its profile launch settings while avoiding stale default-context prelaunches before first tab create.
+- Cookie import now rejects ambiguous user-level requests when multiple active browser contexts exist, requiring `tabId` targeting instead of importing into an arbitrary sibling context.
+- Eviction, timeout, and shutdown cleanup now resolve encoded session/profile keys back to their raw owner user IDs for trace/download/VNC cleanup.
+- Internal session/profile/trace ownership tokens now preserve UTF-16 code-unit identity, so malformed Unicode user/session IDs cannot collapse into replacement-character aliases or cross profile/trace ownership boundaries.
+- Legacy UTF-8 trace artifact lookup now accepts only collision-free owner tokens, so a crafted user ID cannot use a legacy token that is also another user's UTF-16LE artifact token.
+- Explicit session close now treats `userId` as an external owner ID only, so raw internal `u:`, `o:`, or `p:` session/profile keys cannot close another user's runtime state through `/sessions/:userId`.
+- Default profile directory compatibility now applies only to well-formed non-internal user IDs; raw IDs that look like internal `u:`, `s:`, `p:`, or `o:` keys, or contain malformed UTF-16, remain isolated under encoded profile-key directories.
+
 ## [2.4.2] - 2026-05-13
 
 ### Fixed

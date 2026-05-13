@@ -70,13 +70,12 @@ async function main() {
       throw new Error(`equivalent failed: ${equivalent.res.status} ${JSON.stringify(equivalent.data)}`);
     }
 
-    // Test 2: Sibling sessions with different proxy profiles survive individual eviction
+    // Test 2: Sibling session keys still share the canonical profile when no proxy profile is requested.
     const siblingUserId = `passive-sibling-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     
     const first = await postJson(baseUrl, '/tabs', {
       userId: siblingUserId,
       sessionKey: 'alpha',
-      proxy: { host: 'proxy.alpha.test', port: '8001' },
     });
     if (first.res.status !== 200) {
       throw new Error(`alpha session failed: ${first.res.status} ${JSON.stringify(first.data)}`);
@@ -85,32 +84,21 @@ async function main() {
     const second = await postJson(baseUrl, '/tabs', {
       userId: siblingUserId,
       sessionKey: 'beta',
-      proxy: { host: 'proxy.beta.test', port: '8002' },
     });
     if (second.res.status !== 200) {
       throw new Error(`beta session failed: ${second.res.status} ${JSON.stringify(second.data)}`);
     }
 
-    // Get the internal session module to find alpha's profileKey
-    const { getEstablishedSessionProfile } = require('../../dist/src/services/session');
-    const alphaProfile = getEstablishedSessionProfile(siblingUserId, 'alpha');
-    if (!alphaProfile) {
-      throw new Error('alpha session profile not found');
-    }
-    const alphaProfileKey = `${siblingUserId}::alpha::${alphaProfile.signature}`;
-    
-    // Evict only alpha session
-    contextPool.notifyEviction(alphaProfileKey);
-    await contextPool.closeContext(alphaProfileKey);
+    contextPool.notifyEviction(siblingUserId);
+    await contextPool.closeContextByUserId(siblingUserId);
 
-    // Beta session should still work
+    // The canonical profile should rebuild after passive eviction.
     const afterEviction = await postJson(baseUrl, '/tabs', {
       userId: siblingUserId,
       sessionKey: 'beta',
-      proxy: { host: 'proxy.beta.test', port: '8002' },
     });
     if (afterEviction.res.status !== 200) {
-      throw new Error(`beta session after alpha eviction failed: ${afterEviction.res.status} ${JSON.stringify(afterEviction.data)}`);
+      throw new Error(`beta session after passive eviction failed: ${afterEviction.res.status} ${JSON.stringify(afterEviction.data)}`);
     }
 
     process.stdout.write('PASS passive-session-invariant\n');

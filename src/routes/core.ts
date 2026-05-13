@@ -16,20 +16,30 @@ import { startVnc, stopVnc } from '../services/vnc';
 import {
 	MAX_TABS_PER_SESSION,
 	acquireFirstCreateMutex,
+	acquireSessionProfileCreateMutex,
+	claimDefaultSessionProfileRuntime,
+	clearSessionProfile,
+	clearDefaultSessionProfileClaim,
 	commitStagedFirstUse,
 	createCanonicalProfile,
 	createStagedSession,
+	establishSessionProfile,
 	findTabById,
 	getCanonicalProfile,
+	getEstablishedSessionProfile,
 	getSession,
 	getSessionMapKey,
+	getSessionProfileLaunchSettings,
 	getSessionsForUser,
 	getTabGroup,
+	hasDefaultSessionProfileRuntime,
 	indexTab,
 	normalizeUserId,
 	rollbackCanonicalMutex,
+	rollbackSessionProfileRuntime,
 	rollbackStagedFirstUse,
 	unindexTab,
+	waitForSessionProfileCreate,
 	closeSessionsForUser,
 	countTotalTabsForSessions,
 	withUserLimit,
@@ -89,7 +99,7 @@ import {
 	deleteTraceArtifact,
 } from '../services/tracing';
 
-import type { CookieInput, ContextOverrides, StructuredExtractRootSchema, TabState } from '../types';
+import type { CookieInput, ContextOverrides, ResolvedSessionProfile, StructuredExtractRootSchema, TabState } from '../types';
 
 const CONFIG = loadConfig();
 const PKG_VERSION = (() => {
@@ -219,6 +229,16 @@ router.post(
 						message: 'Cannot import cookies without an active session. Create a tab via POST /tabs first.',
 					});
 				}
+				if (existingSessions.length > 1) {
+					log('warn', 'cookie import rejected: ambiguous active sessions', {
+						userId: String(userId),
+						sessionCount: existingSessions.length,
+					});
+					return res.status(409).json({
+						error: 'Ambiguous active sessions',
+						message: 'Multiple active browser contexts exist for this user. Provide tabId to import cookies into a specific context.',
+					});
+				}
 				session = existingSessions[0][1];
 			}
 			await session.context.addCookies(sanitized as never);
@@ -331,6 +351,11 @@ router.post(
 		res: Response,
 	) => {
 		let createUserId: string | undefined;
+		let createSessionKey: string | undefined;
+		let createdSessionProfile = false;
+		let createdSessionProfileSignature: string | undefined;
+		let createdDefaultSessionProfileClaim = false;
+		let releaseSessionProfileCreate: ((committed: boolean) => void) | undefined;
 		let isFirstCreator = false;
 		let stagedGeneration: string | undefined;
 		try {
@@ -352,11 +377,12 @@ router.post(
 				return res.status(400).json({ error: 'userId and sessionKey required' });
 			}
 			createUserId = String(userId);
+			createSessionKey = String(resolvedSessionKey);
 
 			// Check for session profile conflict (proxy/geo drift)
+			let resolvedSessionProfile: ResolvedSessionProfile | undefined;
 			if (proxy || proxyProfile || geoMode) {
 				const { resolveSessionProfileInput, getConfiguredServerProxy, loadProxyProfiles } = await import('../utils/proxy-profiles');
-				const { establishSessionProfile } = await import('../services/session');
 				const profileInput = {
 					preset,
 					locale,
@@ -373,13 +399,9 @@ router.post(
 				};
 				try {
 					const resolvedProfileBase = resolveSessionProfileInput(profileInput, deps);
-					const resolvedProfile = { ...resolvedProfileBase, sessionKey: resolvedSessionKey };
-					establishSessionProfile(userId, resolvedSessionKey, resolvedProfile);
+					resolvedSessionProfile = { ...resolvedProfileBase, sessionKey: resolvedSessionKey };
 				} catch (err) {
 					const message = err instanceof Error ? err.message : String(err);
-					if (message === 'Session profile conflict') {
-						return res.status(409).json({ error: 'Session profile conflict' });
-					}
 					return res.status(400).json({ error: message });
 				}
 			}
@@ -437,12 +459,57 @@ router.post(
 				return res.status(503).json({ error: 'Could not acquire canonical profile, try again' });
 			}
 
-			const sessionMapKey = getSessionMapKey(userId, contextOverrides);
+			if (resolvedSessionProfile) {
+				while (true) {
+					await waitForSessionProfileCreate(userId, resolvedSessionKey);
+					const existingProfile = getEstablishedSessionProfile(userId, resolvedSessionKey);
+					if (existingProfile) {
+						if (existingProfile.signature !== resolvedSessionProfile.signature) {
+							return res.status(409).json({ error: 'Session profile conflict' });
+						}
+						break;
+					}
+					if (hasDefaultSessionProfileRuntime(userId, resolvedSessionKey)) {
+						return res.status(409).json({ error: 'Session profile conflict' });
+					}
+
+					const mutex = acquireSessionProfileCreateMutex(userId, resolvedSessionKey, resolvedSessionProfile.signature);
+					if (mutex.acquired) {
+						releaseSessionProfileCreate = mutex.release;
+						try {
+							establishSessionProfile(userId, resolvedSessionKey, resolvedSessionProfile);
+							createdSessionProfile = true;
+							createdSessionProfileSignature = resolvedSessionProfile.signature;
+						} catch (err) {
+							releaseSessionProfileCreate(false);
+							releaseSessionProfileCreate = undefined;
+							const message = err instanceof Error ? err.message : String(err);
+							if (message === 'Session profile conflict') {
+								return res.status(409).json({ error: 'Session profile conflict' });
+							}
+							return res.status(400).json({ error: message });
+						}
+						break;
+					}
+
+					await mutex.wait;
+				}
+			} else {
+				await waitForSessionProfileCreate(userId, resolvedSessionKey);
+				if (!getEstablishedSessionProfile(userId, resolvedSessionKey)) {
+					createdDefaultSessionProfileClaim = claimDefaultSessionProfileRuntime(userId, resolvedSessionKey);
+				}
+			}
+
+			const establishedProfile = getEstablishedSessionProfile(userId, resolvedSessionKey);
+			const sessionMapKey = establishedProfile
+				? getSessionMapKey(userId, resolvedSessionKey, establishedProfile.signature)
+				: getSessionMapKey(userId, contextOverrides);
 			let tabId: string;
 			let pageUrl: string;
 
 			if (isFirstCreator) {
-				const staged = await createStagedSession(userId, contextOverrides);
+				const staged = await createStagedSession(userId, contextOverrides, resolvedSessionKey);
 				stagedGeneration = staged.generation;
 				const { session, generation } = staged;
 				const page = await session.context.newPage();
@@ -470,15 +537,33 @@ router.post(
 				}, generation);
 				if (!committed) {
 					await rollbackStagedFirstUse(createUserId ?? userId, generation).catch(() => {});
+					if (createdSessionProfile && createdSessionProfileSignature) {
+						await rollbackSessionProfileRuntime(userId, resolvedSessionKey, createdSessionProfileSignature);
+					}
+					if (createdDefaultSessionProfileClaim) {
+						clearDefaultSessionProfileClaim(userId, resolvedSessionKey);
+						createdDefaultSessionProfileClaim = false;
+					}
+					releaseSessionProfileCreate?.(false);
+					releaseSessionProfileCreate = undefined;
 					return res.status(409).json({ error: 'Session closed during creation' });
 				}
 				commitStagedDownloads(tabId);
 
 				pageUrl = page.url();
 			} else {
-				const session = await getSession(userId, contextOverrides);
+				const session = await getSession(userId, contextOverrides, resolvedSessionKey);
 				const totalTabs = countTotalTabsForSessions([[sessionMapKey, session]]);
 				if (totalTabs >= MAX_TABS_PER_SESSION) {
+					if (createdSessionProfile && createdSessionProfileSignature) {
+						await rollbackSessionProfileRuntime(userId, resolvedSessionKey, createdSessionProfileSignature);
+					}
+					if (createdDefaultSessionProfileClaim) {
+						clearDefaultSessionProfileClaim(userId, resolvedSessionKey);
+						createdDefaultSessionProfileClaim = false;
+					}
+					releaseSessionProfileCreate?.(false);
+					releaseSessionProfileCreate = undefined;
 					return res.status(429).json({ error: 'Maximum tabs per session reached' });
 				}
 
@@ -512,6 +597,9 @@ router.post(
 				url: pageUrl,
 			});
 			lifecycleController.recordInteractiveActivity();
+			releaseSessionProfileCreate?.(true);
+			releaseSessionProfileCreate = undefined;
+			createdSessionProfile = false;
 			return res.json({ tabId, url: pageUrl });
 		} catch (err) {
 			if (isFirstCreator && createUserId) {
@@ -521,6 +609,18 @@ router.post(
 					rollbackCanonicalMutex(createUserId);
 				}
 			}
+			if (createdSessionProfile && createUserId && createSessionKey) {
+				if (createdSessionProfileSignature) {
+					await rollbackSessionProfileRuntime(createUserId, createSessionKey, createdSessionProfileSignature);
+				} else {
+					clearSessionProfile(createUserId, createSessionKey);
+				}
+			}
+			if (createdDefaultSessionProfileClaim && createUserId && createSessionKey) {
+				clearDefaultSessionProfileClaim(createUserId, createSessionKey);
+			}
+			releaseSessionProfileCreate?.(false);
+			releaseSessionProfileCreate = undefined;
 			const message = err instanceof Error ? err.message : String(err);
 			log('error', 'tab create failed', { reqId: req.reqId, error: message });
 			return res.status(getRouteErrorStatus(err)).json({ error: safeError(err) });
@@ -1259,14 +1359,29 @@ router.post(
 				});
 			}
 
-			// Existing tabs become invalid after context restart.
-			await closeSessionsForUser(userId);
-			await contextPool.restartContext(userId, headless);
+			const existingSessions = getSessionsForUser(userId);
+			const prewarmProfileKey = existingSessions.length === 1 ? existingSessions[0][0] : undefined;
+			const prewarmEntry = prewarmProfileKey ? contextPool.getEntry(prewarmProfileKey) : undefined;
+			const prewarmLaunchSettings =
+				prewarmProfileKey && !prewarmEntry ? getSessionProfileLaunchSettings(userId, prewarmProfileKey) : undefined;
+			const prewarmOptions = prewarmEntry ? prewarmEntry.seedOptions : prewarmLaunchSettings?.contextOverrides ?? undefined;
+			const prewarmProxy = prewarmEntry ? prewarmEntry.proxyConfig : prewarmLaunchSettings?.proxy ?? null;
+			let tabsInvalidated = false;
 
 			let vncUrl: string | undefined;
 			if (headless === true) {
+				if (prewarmProfileKey) {
+					// Existing tabs become invalid after context restart/close.
+					await closeSessionsForUser(userId, { clearProfiles: false });
+					tabsInvalidated = true;
+				}
+				contextPool.setHeadlessOverride(userId, headless);
 				await stopVnc(userId).catch(() => {});
-			} else {
+			} else if (prewarmProfileKey) {
+				// Existing tabs become invalid after context restart.
+				await closeSessionsForUser(userId, { clearProfiles: false });
+				tabsInvalidated = true;
+				await contextPool.restartContext(userId, headless, prewarmProfileKey, prewarmOptions, prewarmProxy);
 				const displayNum = getDisplayForUser(userId);
 				if (displayNum) {
 					try {
@@ -1277,15 +1392,22 @@ router.post(
 						log('warn', 'vnc start failed after display toggle', { userId, error: vncMessage, displayNum });
 					}
 				}
+			} else {
+				contextPool.setHeadlessOverride(userId, headless);
 			}
 
 			const modeLabel = headless === false ? 'headed mode' : headless === 'virtual' ? 'virtual display mode' : 'headless mode';
 			return res.json({
 				ok: true,
 				headless,
+				tabsInvalidated,
 				...(vncUrl
 					? { vncUrl, message: 'Browser visible via VNC' }
-					: { message: `Browser restarted in ${modeLabel}. Previous tabs invalidated — create new tabs.` }),
+					: {
+							message: tabsInvalidated
+								? `Display mode updated to ${modeLabel}. Previous tabs invalidated — create new tabs.`
+								: `Display mode override saved as ${modeLabel}. Existing tabs preserved; new contexts use the requested mode.`,
+						}),
 				userId,
 			});
 		} catch (err) {

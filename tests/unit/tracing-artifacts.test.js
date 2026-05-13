@@ -30,10 +30,14 @@ describe('tracing artifact helpers', () => {
   let resolveTraceArtifactPath;
 
   const TRACES_DIR = mockTracesDir;
-  const userOneToken = Buffer.from('user/one').toString('base64url');
-  const userUnderscoreToken = Buffer.from('user_one').toString('base64url');
-  const prefixUserToken = Buffer.from('\u00A0').toString('base64url');
-  const prefixedUserToken = Buffer.from('\u00A0>').toString('base64url');
+  const ownerToken = (value) => Buffer.from(String(value), 'utf16le').toString('base64url');
+  const userOneToken = ownerToken('user/one');
+  const legacyUserOneToken = Buffer.from('user/one', 'utf8').toString('base64url');
+  const oddLegacyUserToken = ownerToken('odd');
+  const legacyOddLegacyUserToken = Buffer.from('odd', 'utf8').toString('base64url');
+  const userUnderscoreToken = ownerToken('user_one');
+  const prefixUserToken = ownerToken('\u00A0');
+  const prefixedUserToken = ownerToken('\u00A0>');
 
   beforeEach(() => {
     jest.resetModules();
@@ -73,6 +77,92 @@ describe('tracing artifact helpers', () => {
         createdAt: 2000,
       },
     ]);
+  });
+
+  test('listTraceArtifacts() keeps collision-free legacy artifacts for well-formed user IDs', () => {
+    fs.readdirSync.mockReturnValue([
+      { name: `${legacyOddLegacyUserToken}-100.zip`, isFile: () => true },
+      { name: `${oddLegacyUserToken}-200.zip`, isFile: () => true },
+    ]);
+    fs.statSync.mockImplementation((artifactPath) => {
+      const stats = {
+        [`${TRACES_DIR}/${legacyOddLegacyUserToken}-100.zip`]: { size: 100, mtimeMs: 1000 },
+        [`${TRACES_DIR}/${oddLegacyUserToken}-200.zip`]: { size: 200, mtimeMs: 2000 },
+      };
+      return stats[artifactPath];
+    });
+
+    expect(listTraceArtifacts('odd').map((artifact) => artifact.filename)).toEqual([
+      `${oddLegacyUserToken}-200.zip`,
+      `${legacyOddLegacyUserToken}-100.zip`,
+    ]);
+  });
+
+  test('legacy UTF-8 owner tokens cannot collide with another user UTF-16LE owner token', () => {
+    const victimUser = 'user';
+    const collidingUser = 'u\0s\0e\0r\0';
+    const victimToken = ownerToken(victimUser);
+    const collidingUserLegacyToken = Buffer.from(collidingUser, 'utf8').toString('base64url');
+
+    expect(collidingUser).not.toBe(victimUser);
+    expect(collidingUserLegacyToken).toBe(victimToken);
+    fs.readdirSync.mockReturnValue([
+      { name: `${victimToken}-100.zip`, isFile: () => true },
+    ]);
+    fs.statSync.mockImplementation((artifactPath) => {
+      const stats = {
+        [`${TRACES_DIR}/${victimToken}-100.zip`]: { size: 100, mtimeMs: 1000 },
+      };
+      return stats[artifactPath];
+    });
+
+    expect(listTraceArtifacts(collidingUser)).toEqual([]);
+    expect(() => resolveTraceArtifactPath(collidingUser, `${victimToken}-100.zip`)).toThrow(
+      'Trace artifact does not belong to this user',
+    );
+    expect(() => deleteTraceArtifact(collidingUser, `${victimToken}-100.zip`)).toThrow(
+      'Trace artifact does not belong to this user',
+    );
+  });
+
+  test('malformed UTF-16 user IDs cannot access replacement-character trace artifacts', () => {
+    const loneSurrogate = '\ud800';
+    const replacement = '\ufffd';
+    const loneToken = ownerToken(loneSurrogate);
+    const replacementToken = ownerToken(replacement);
+    const legacyCollisionToken = Buffer.from(loneSurrogate, 'utf8').toString('base64url');
+
+    expect(loneToken).not.toBe(replacementToken);
+    expect(legacyCollisionToken).toBe(Buffer.from(replacement, 'utf8').toString('base64url'));
+    fs.readdirSync.mockReturnValue([
+      { name: `${loneToken}-100.zip`, isFile: () => true },
+      { name: `${replacementToken}-200.zip`, isFile: () => true },
+      { name: `${legacyCollisionToken}-300.zip`, isFile: () => true },
+    ]);
+    fs.statSync.mockImplementation((artifactPath) => {
+      const stats = {
+        [`${TRACES_DIR}/${loneToken}-100.zip`]: { size: 100, mtimeMs: 1000 },
+        [`${TRACES_DIR}/${replacementToken}-200.zip`]: { size: 200, mtimeMs: 2000 },
+        [`${TRACES_DIR}/${legacyCollisionToken}-300.zip`]: { size: 300, mtimeMs: 3000 },
+      };
+      return stats[artifactPath];
+    });
+
+    expect(listTraceArtifacts(loneSurrogate)).toEqual([
+      {
+        filename: `${loneToken}-100.zip`,
+        size: 100,
+        createdAt: 1000,
+      },
+    ]);
+    expect(() => resolveTraceArtifactPath(loneSurrogate, `${replacementToken}-200.zip`)).toThrow(
+      'Trace artifact does not belong to this user',
+    );
+    expect(() => resolveTraceArtifactPath(loneSurrogate, `${legacyCollisionToken}-300.zip`)).toThrow(
+      'Trace artifact does not belong to this user',
+    );
+    expect(deleteTraceArtifact(loneSurrogate, `${loneToken}-100.zip`)).toBe(true);
+    expect(fs.unlinkSync).toHaveBeenCalledWith(`${TRACES_DIR}/${loneToken}-100.zip`);
   });
 
   test('listTraceArtifacts() skips entries that vanish before stat', () => {

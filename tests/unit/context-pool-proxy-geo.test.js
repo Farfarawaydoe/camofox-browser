@@ -33,18 +33,24 @@ jest.mock('camoufox-js/dist/pkgman.js', () => ({
   installedVerStr: jest.fn(() => '1.0.0'),
 }));
 
+const mockLaunchPersistentContext = jest.fn(async () => {
+  const mockContext = {
+    pages: jest.fn(() => []),
+    newPage: jest.fn(async () => ({})),
+    close: jest.fn(async () => {}),
+    on: jest.fn(),
+  };
+  return mockContext;
+});
+
+function defaultProfileKey(userId) {
+  return `u:${Buffer.from(String(userId), 'utf16le').toString('base64url')}`;
+}
+
 // Mock playwright-core to avoid heavy browser dependencies
 jest.mock('playwright-core', () => ({
   firefox: {
-    launchPersistentContext: jest.fn(async () => {
-      const mockContext = {
-        pages: jest.fn(() => []),
-        newPage: jest.fn(async () => ({})),
-        close: jest.fn(async () => {}),
-        on: jest.fn(),
-      };
-      return mockContext;
-    }),
+    launchPersistentContext: mockLaunchPersistentContext,
   },
 }));
 
@@ -64,6 +70,10 @@ describe('ContextPool proxy-geo identity', () => {
   beforeAll(() => {
     // Import after mocks are set up
     ContextPool = require('../../dist/src/services/context-pool').ContextPool;
+  });
+
+  beforeEach(() => {
+    mockLaunchPersistentContext.mockClear();
   });
 
   test('ensureContext reuses only identical profile signatures', async () => {
@@ -137,6 +147,97 @@ describe('ContextPool proxy-geo identity', () => {
 
     // Cleanup
     await pool.closeContext('user-2::session-b::sig-y');
+  });
+
+  test('profile-keyed sibling contexts use separate persistent profile directories', async () => {
+    const pool = new ContextPool();
+
+    await pool.ensureContext(
+      'user-6::alpha::sig-a',
+      'user-6',
+      { timezoneId: 'Asia/Tokyo' },
+      { source: 'named-profile', server: 'http://proxy.alpha.test:8001', profileName: 'alpha' },
+    );
+
+    await pool.ensureContext(
+      'user-6::beta::sig-b',
+      'user-6',
+      { timezoneId: 'Europe/Berlin' },
+      { source: 'named-profile', server: 'http://proxy.beta.test:8002', profileName: 'beta' },
+    );
+
+    const dirs = mockLaunchPersistentContext.mock.calls.map((call) => call[0]);
+    expect(dirs).toContain('/tmp/camofox-test/profiles/user-6%3A%3Aalpha%3A%3Asig-a');
+    expect(dirs).toContain('/tmp/camofox-test/profiles/user-6%3A%3Abeta%3A%3Asig-b');
+    expect(new Set(dirs).size).toBe(2);
+
+    await pool.closeContext('user-6::alpha::sig-a');
+    await pool.closeContext('user-6::beta::sig-b');
+  });
+
+  test('restartContext prelaunches the encoded default profile key', async () => {
+    const pool = new ContextPool();
+    const userId = 'toggle::owner';
+    const profileKey = defaultProfileKey(userId);
+
+    const restarted = await pool.restartContext(userId, false, profileKey);
+
+    expect(restarted.profileKey).toBe(profileKey);
+    expect(pool.getEntry(profileKey)).toBe(restarted);
+    expect(pool.getEntry(userId)).toBeUndefined();
+
+    await pool.closeContext(profileKey);
+  });
+
+  test('encoded default profile keys keep the legacy raw-user persistent profile directory', async () => {
+    const pool = new ContextPool();
+    const userId = 'legacy::owner';
+    const profileKey = defaultProfileKey(userId);
+
+    const entry = await pool.ensureContext(profileKey, userId);
+
+    expect(entry.profileDir).toBe('/tmp/camofox-test/profiles/legacy%3A%3Aowner');
+    expect(mockLaunchPersistentContext).toHaveBeenCalledWith(
+      '/tmp/camofox-test/profiles/legacy%3A%3Aowner',
+      expect.any(Object),
+    );
+
+    await pool.closeContext(profileKey);
+  });
+
+  test('raw user IDs that look like internal profile keys cannot alias profile-key directories', async () => {
+    const pool = new ContextPool();
+    const craftedUserId = 'p:dmljdGlt:YWxwaGE:N2Y0OTBlN2M2ODBk';
+    const craftedDefaultKey = defaultProfileKey(craftedUserId);
+
+    const victim = await pool.ensureContext(craftedUserId, 'victim', { timezoneId: 'Asia/Tokyo' });
+    const crafted = await pool.ensureContext(craftedDefaultKey, craftedUserId);
+
+    expect(victim.profileDir).toBe('/tmp/camofox-test/profiles/p%3AdmljdGlt%3AYWxwaGE%3AN2Y0OTBlN2M2ODBk');
+    expect(crafted.profileDir).toBe(`/tmp/camofox-test/profiles/${encodeURIComponent(craftedDefaultKey)}`);
+    expect(crafted.profileDir).not.toBe(victim.profileDir);
+
+    await pool.closeContext(craftedDefaultKey);
+    await pool.closeContext(craftedUserId);
+  });
+
+  test('malformed UTF-16 default user IDs stay in encoded profile-key directories', async () => {
+    const pool = new ContextPool();
+    const loneSurrogateUserId = '\ud800';
+    const replacementUserId = '\ufffd';
+    const loneKey = defaultProfileKey(loneSurrogateUserId);
+    const replacementKey = defaultProfileKey(replacementUserId);
+
+    expect(loneKey).not.toBe(replacementKey);
+    const lone = await pool.ensureContext(loneKey, loneSurrogateUserId);
+    const replacement = await pool.ensureContext(replacementKey, replacementUserId);
+
+    expect(lone.profileDir).toBe(`/tmp/camofox-test/profiles/${encodeURIComponent(loneKey)}`);
+    expect(replacement.profileDir).toBe('/tmp/camofox-test/profiles/%EF%BF%BD');
+    expect(lone.profileDir).not.toBe(replacement.profileDir);
+
+    await pool.closeContext(loneKey);
+    await pool.closeContext(replacementKey);
   });
 
   test('closeContext removes entry by profileKey not userId', async () => {

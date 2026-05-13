@@ -157,6 +157,91 @@ describe('runLifecycleIdleCleanup - reuse race bug', () => {
     expect(poolAfter).toBeDefined();
   }, 30000);
 
+  it('cleans only the zero-tab profile-key session during idle cleanup', async () => {
+    const userId = 'profile-idle-user';
+    const alphaKey = `${userId}::alpha::sig-a`;
+    const betaKey = `${userId}::beta::sig-b`;
+    const sessions = __getSessionsMapForTests();
+    const now = Date.now();
+
+    const alphaContext = {
+      pages: () => [],
+      newPage: async () => ({ close: async () => {} }),
+      close: jest.fn(async () => {}),
+      on: () => {},
+    };
+    const betaContext = {
+      pages: () => [],
+      newPage: async () => ({ close: async () => {} }),
+      close: jest.fn(async () => {}),
+      on: () => {},
+    };
+
+    sessions.set(alphaKey, {
+      context: alphaContext,
+      tabGroups: new Map(),
+      lastAccess: now - 10000,
+    });
+    sessions.set(betaKey, {
+      context: betaContext,
+      tabGroups: new Map([
+        ['beta', new Map([
+          ['tab-beta', {
+            tabId: 'tab-beta',
+            page: await betaContext.newPage(),
+            url: 'https://example.com/beta',
+            createdAt: now,
+          }],
+        ])],
+      ]),
+      lastAccess: now - 10000,
+    });
+
+    contextPool.pool.set(alphaKey, {
+      userId,
+      profileKey: alphaKey,
+      profileDir: `/tmp/${alphaKey}`,
+      context: alphaContext,
+      createdAt: now - 20000,
+      lastAccess: now - 10000,
+      staged: false,
+      launching: false,
+    });
+    contextPool.pool.set(betaKey, {
+      userId,
+      profileKey: betaKey,
+      profileDir: `/tmp/${betaKey}`,
+      context: betaContext,
+      createdAt: now - 20000,
+      lastAccess: now - 10000,
+      staged: false,
+      launching: false,
+    });
+
+    const sessionSnapshot = new Map();
+    const contextSnapshot = new Map();
+    for (const [key, session] of sessions) {
+      sessionSnapshot.set(key, {
+        context: session.context,
+        tabGroups: new Map(session.tabGroups),
+        lastAccess: session.lastAccess,
+      });
+    }
+    for (const [key, entry] of contextPool.pool) {
+      contextSnapshot.set(key, { ...entry });
+    }
+
+    const result = await runLifecycleIdleCleanup(sessionSnapshot, contextSnapshot, now);
+
+    expect(result.closedUsers).toEqual([alphaKey]);
+    expect(sessions.has(alphaKey)).toBe(false);
+    expect(contextPool.pool.has(alphaKey)).toBe(false);
+    expect(sessions.has(betaKey)).toBe(true);
+    expect(contextPool.pool.has(betaKey)).toBe(true);
+    expect(alphaContext.close).toHaveBeenCalled();
+    expect(betaContext.close).not.toHaveBeenCalled();
+  }, 30000);
+
   it('should not hand back a context while idle cleanup close is in flight', async () => {
     const userId = 'closing-race-user';
     const sessions = __getSessionsMapForTests();

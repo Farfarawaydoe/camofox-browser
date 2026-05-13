@@ -5,6 +5,10 @@ const { startTestSite, stopTestSite, getTestSiteUrl } = require('../helpers/test
 const { createClient } = require('../helpers/client');
 const { loadConfig } = require('../../dist/src/utils/config');
 
+function ownerToken(userId) {
+  return Buffer.from(String(userId), 'utf16le').toString('base64url');
+}
+
 function buildAuthHeaders() {
   if (!process.env.CAMOFOX_API_KEY) return {};
   return { Authorization: `Bearer ${process.env.CAMOFOX_API_KEY}` };
@@ -82,9 +86,9 @@ describe('Tracing artifacts', () => {
 
     try {
       const { tabId } = await client.createTab(`${testSiteUrl}/pageA`);
-      const spoofedFilename = `${Buffer.from(otherClient.userId, 'utf8').toString('base64url')}-${Date.now()}.zip`;
+      const spoofedFilename = `${ownerToken(otherClient.userId)}-${Date.now()}.zip`;
       const spoofedPath = path.join(loadConfig().tracesDir, spoofedFilename);
-      const ownerToken = Buffer.from(client.userId, 'utf8').toString('base64url');
+      const clientOwnerToken = ownerToken(client.userId);
 
       await client.request('POST', `/tabs/${tabId}/trace/start`, { userId: client.userId });
 
@@ -94,7 +98,7 @@ describe('Tracing artifacts', () => {
       });
 
       expect(stopped.ok).toBe(true);
-      expect(stopped.filename).toMatch(new RegExp(`^${ownerToken}-\\d+\\.zip$`));
+      expect(stopped.filename).toMatch(new RegExp(`^${clientOwnerToken}-\\d+\\.zip$`));
       expect(stopped.filename).not.toBe(spoofedFilename);
       expect(path.dirname(stopped.path)).toBe(path.resolve(loadConfig().tracesDir));
     } finally {

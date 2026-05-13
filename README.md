@@ -393,7 +393,7 @@ This works with **Claude Code**, **Codex**, **Cursor**, **Gemini CLI**, **GitHub
 | Skill | Focus | Best For |
 |-------|-------|----------|
 | `camofox-browser` | Full coverage (CLI + API + OpenClaw) | Complete reference |
-| `camofox-cli` | CLI-only (50 commands) | Terminal-first workflows |
+| `camofox-cli` | CLI-only (50+ commands) | Terminal-first workflows |
 | `dogfood` | QA testing workflow | Systematic web app testing |
 | `gemini-image` | Gemini image generation | AI image automation |
 | `reddit` | Reddit automation | Reddit posting/commenting |
@@ -849,11 +849,13 @@ Then use profiles by name in API requests or CLI commands.
 | `CAMOFOX_MAX_BATCH_CONCURRENCY` | `5` | Batch download concurrency cap |
 | `CAMOFOX_MAX_BLOB_SIZE_MB` | `5` | Max blob payload size |
 | `CAMOFOX_MAX_DOWNLOADS_PER_USER` | `500` | Per-user download record cap |
+| `CAMOFOX_CONSOLE_BUFFER_SIZE` | `1000` | Per-tab console/error message buffer size (minimum `100`) |
 | `HANDLER_TIMEOUT_MS` | `30000` | Handler timeout fallback |
 | `MAX_CONCURRENT_PER_USER` | `3` | Concurrent operations per user |
 | `CAMOFOX_VNC_BASE_PORT` | `6080` | noVNC/websockify base port |
 | `CAMOFOX_VNC_HOST` | `localhost` | noVNC host in returned URL |
 | `CAMOFOX_CLI_USER` | `cli-default` | Default CLI user id |
+| `CAMOFOX_SERVER_PID_FILE` | (unset) | Optional daemon PID file path used by the CLI server manager |
 | `CAMOFOX_IDLE_TIMEOUT_MS` | `1800000` | Stage 1 idle cleanup threshold (ms) |
 | `CAMOFOX_IDLE_EXIT_TIMEOUT_MS` | `1800000` | Stage 2 daemon exit quiet window (ms, defaults to match Stage 1) |
 | `CAMOFOX_PRESETS_FILE` | (unset) | Optional JSON file defining/overriding geo presets |
@@ -866,9 +868,12 @@ Then use profiles by name in API requests or CLI commands.
 | `PROXY_USERNAME` | (empty) | Proxy username (server-level default) |
 | `PROXY_PASSWORD` | (empty) | Proxy password (server-level default) |
 | `CAMOFOX_MAX_SNAPSHOT_CHARS` | `80000` | Max characters in snapshot before truncation |
+| `CAMOFOX_MAX_SNAPSHOT_NODES` | `2000` | Max accessibility snapshot nodes before truncation |
 | `CAMOFOX_SNAPSHOT_TAIL_CHARS` | `5000` | Characters preserved at end of truncated snapshot |
 | `CAMOFOX_BUILDREFS_TIMEOUT_MS` | `12000` | Timeout for building element refs |
 | `CAMOFOX_TAB_LOCK_TIMEOUT_MS` | `30000` | Timeout for acquiring tab lock |
+| `CAMOFOX_TRACES_DIR` | `~/.camofox/traces` | Managed Playwright trace artifact directory |
+| `CAMOFOX_TRACE_MAX_DURATION_MS` | `300000` | Maximum trace recording duration before automatic stop |
 | `CAMOFOX_HEALTH_PROBE_INTERVAL_MS` | `60000` | Health probe check interval |
 | `CAMOFOX_FAILURE_THRESHOLD` | `3` | Consecutive failures before health degradation |
 | `CAMOFOX_YT_DLP_TIMEOUT_MS` | `30000` | Timeout for yt-dlp subtitle extraction |
