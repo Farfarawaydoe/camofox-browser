@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [2.4.2] - 2026-05-13
+
+### Fixed
+- `proxyProfile` now takes precedence over raw `proxy` when both are supplied for session proxy/geo resolution, matching the documented/tested contract for `/tabs` and `/tabs/open`.
+- Refreshed runtime and dev dependency lockfile entries so full `npm audit` reports zero vulnerabilities.
+
 ## Release Audit: v2.3.0 -> v2.4.1
 
 ### What shipped in this line

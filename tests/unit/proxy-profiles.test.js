@@ -67,6 +67,32 @@ describe('proxy profile resolution', () => {
     });
   });
 
+  test('proxyProfile takes precedence over raw proxy when both are provided', () => {
+    const { resolveSessionProfileInput } = require('../../dist/src/utils/proxy-profiles');
+
+    const result = resolveSessionProfileInput({
+      proxyProfile: 'tokyo-exit',
+      proxy: {
+        host: 'ignored.example.com',
+        port: '9999',
+      },
+    }, {
+      serverProxy: null,
+      proxyProfiles: {
+        'tokyo-exit': {
+          server: 'http://proxy.tokyo.test:8080',
+          locale: 'ja-JP',
+        },
+      },
+    });
+
+    expect(result.proxy).toMatchObject({
+      source: 'named-profile',
+      profileName: 'tokyo-exit',
+      server: 'http://proxy.tokyo.test:8080',
+    });
+  });
+
   test('unknown proxy profile throws error with available profiles list', () => {
     const { resolveSessionProfileInput } = require('../../dist/src/utils/proxy-profiles');
 

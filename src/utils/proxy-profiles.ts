@@ -146,9 +146,7 @@ export function resolveSessionProfileInput(
 
   // Resolve proxy source
   let proxy: ResolvedProxyConfig | null = null;
-  if (input.proxy) {
-    proxy = normalizeRawProxy(input.proxy);
-  } else if (input.proxyProfile) {
+  if (input.proxyProfile) {
     const named = deps.proxyProfiles[input.proxyProfile.toLowerCase()];
     if (!named) {
       const available = Object.keys(deps.proxyProfiles);
@@ -160,6 +158,8 @@ export function resolveSessionProfileInput(
       profileName: input.proxyProfile,
       ...named,
     } as ResolvedProxyConfig;
+  } else if (input.proxy) {
+    proxy = normalizeRawProxy(input.proxy);
   } else {
     proxy = deps.serverProxy;
   }
