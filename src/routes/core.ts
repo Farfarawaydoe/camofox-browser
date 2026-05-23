@@ -45,6 +45,7 @@ import {
 	withUserLimit,
 } from '../services/session';
 import {
+	acquirePageForNewTab,
 	backTab,
 	buildSnapshotPayload,
 	buildRefs,
@@ -512,7 +513,7 @@ router.post(
 				const staged = await createStagedSession(userId, contextOverrides, resolvedSessionKey);
 				stagedGeneration = staged.generation;
 				const { session, generation } = staged;
-				const page = await session.context.newPage();
+				const page = await acquirePageForNewTab(session.context);
 				tabId = crypto.randomUUID();
 				(page as unknown as { __camofox_tabId?: string }).__camofox_tabId = tabId;
 				const tabState = await createTabState(page);
@@ -568,7 +569,7 @@ router.post(
 				}
 
 				const group = getTabGroup(session, resolvedSessionKey);
-				const page = await session.context.newPage();
+				const page = await acquirePageForNewTab(session.context);
 				tabId = crypto.randomUUID();
 				(page as unknown as { __camofox_tabId?: string }).__camofox_tabId = tabId;
 				const tabState = await createTabState(page);

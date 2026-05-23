@@ -42,6 +42,7 @@ import {
 	withUserLimit,
 } from '../services/session';
 import {
+	acquirePageForNewTab,
 	buildSnapshotPayload,
 	buildRefs,
 	createTabState,
@@ -240,7 +241,7 @@ router.post('/tabs/open', async (req: Request<unknown, unknown, { url?: string; 
 		}
 
 		const group = getTabGroup(session, listItemId);
-		const page = await session.context.newPage();
+		const page = await acquirePageForNewTab(session.context);
 		const tabId = crypto.randomUUID();
 		const tabState = await createTabState(page);
 		group.set(tabId, tabState);

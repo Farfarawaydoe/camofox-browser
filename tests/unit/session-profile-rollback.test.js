@@ -102,6 +102,7 @@ describe('session profile rollback after runtime allocation failure', () => {
       markDownloadsStaged: jest.fn(),
     }));
     jest.doMock('../../dist/src/services/tab', () => ({
+      acquirePageForNewTab: jest.fn((context) => context.newPage()),
       backTab: jest.fn(),
       buildSnapshotPayload: jest.fn(),
       buildRefs: jest.fn(),

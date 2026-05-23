@@ -1162,6 +1162,24 @@ async function ensureNavigationSafetyGuard(page: Pick<Page, 'context'>, options:
 	navigationGuardHandlers.set(context, routeHandler);
 }
 
+function isReusableInitialBlankPage(page: Page): boolean {
+	const taggedPage = page as Page & { __camofox_tabId?: string };
+	if (taggedPage.__camofox_tabId) return false;
+	if (typeof page.isClosed !== 'function' || page.isClosed()) return false;
+	return page.url() === 'about:blank';
+}
+
+export async function acquirePageForNewTab(context: BrowserContext): Promise<Page> {
+	if (typeof context.pages !== 'function') {
+		return context.newPage();
+	}
+	const pages = context.pages();
+	if (pages.length === 1 && isReusableInitialBlankPage(pages[0])) {
+		return pages[0];
+	}
+	return context.newPage();
+}
+
 export async function createTabState(page: Page): Promise<TabState> {
 	const state: TabState = {
 		page,

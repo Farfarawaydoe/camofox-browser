@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [2.4.4] - 2026-05-23
+
+### Fixed
+- First tab creation now reuses the browser engine's initial untracked `about:blank` page when safe, preventing headed and virtual-display sessions from opening an extra empty window beside the requested page.
+
+### Security
+- Refreshed Express/body-parser/qs and CI reporter dependency locks so `npm audit --audit-level=moderate` reports zero vulnerabilities.
+
+### Tests
+- Added unit and real browser regression coverage for the first-tab initial blank-page reuse path.
+
 ## [2.4.3] - 2026-05-13
 
 ### Fixed
