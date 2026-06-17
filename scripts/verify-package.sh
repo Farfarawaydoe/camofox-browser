@@ -6,6 +6,7 @@ echo ""
 
 # Configuration
 EXPECTED_NODE_FLOOR="20"
+EXPECTED_PLAYWRIGHT_CORE="1.58.1"
 EXPECTED_BINS=("camofox" "camofox-browser")
 EXPECTED_FILES=("package.json" "README.md" "CHANGELOG.md" "LICENSE" "plugin.ts" "openclaw.plugin.json")
 EXPECTED_DIRS=("dist" "bin")
@@ -160,6 +161,13 @@ if [ "$MAIN_RESOLVE" = "ok" ]; then
   pass "Main entry resolves via require('camofox-browser')"
 else
   fail "Main entry does not resolve"
+fi
+
+INSTALLED_PLAYWRIGHT_CORE=$(node -e "console.log(require('playwright-core/package.json').version)")
+if [ "$INSTALLED_PLAYWRIGHT_CORE" = "$EXPECTED_PLAYWRIGHT_CORE" ]; then
+  pass "playwright-core resolved to ${EXPECTED_PLAYWRIGHT_CORE}"
+else
+  fail "playwright-core resolved to ${INSTALLED_PLAYWRIGHT_CORE}, expected ${EXPECTED_PLAYWRIGHT_CORE}"
 fi
 
 # Verify plugin.ts is accessible in installed package

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [2.4.6] - 2026-06-17
+
+### Fixed
+- Pinned `playwright-core` to the Camoufox-compatible `1.58.1` protocol version so fresh npm installs no longer float to newer Playwright builds that send unsupported Firefox protocol fields during tab launch.
+
+### Tests
+- Added package release-contract coverage for the Playwright protocol dependency pin.
+
 ## [2.4.5] - 2026-05-25
 
 ### Added
